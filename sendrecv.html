@@ -19,6 +19,8 @@
     </p>
     <button onclick="startConn();">接続</button>
     <button onclick="disconnect();">切断</button>
+    <button onclick="toggleVideo()">動画オンオフ</button>
+    <button onclick="toggleAudio()">音声オンオフ</button>
   </div>
   <div style="float:left;">
     <video id="local-video" muted autoplay playsinline
@@ -39,15 +41,22 @@
     const localVideo = document.querySelector('#local-video');
     const remoteVideo = document.querySelector('#remote-video');
     let conn;
+    let localRecorder, remoteRecorder;
+    let localAudioChunks = [], remoteAudioChunks = [];
+    let isAudioMuted = false;
+
     const disconnect = () => {
       if (conn) {
         conn.disconnect();
       }
-    }
+      stopRecordingAndDownload();
+    };
+
     const startConn = async () => {
       options.video.codec = videoCodec;
       conn = Ayame.connection(signalingUrl, roomId, options, true);
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      console.log(conn);
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
       const authnMetadata = { hoge: "fuga" };
       conn.on('open', ({ authzMetadata }) => console.log(authzMetadata));
       conn.on('disconnect', (e) => {
@@ -58,13 +67,84 @@
       conn.on('addstream', async (e) => {
         console.log(e.stream);
         remoteVideo.srcObject = e.stream;
+        startRemoteRecording(e.stream);
       });
       await conn.connect(mediaStream, { authnMetadata });
       localVideo.srcObject = mediaStream;
+      startLocalRecording(mediaStream);
     };
+
+    const toggleVideo = () => {
+      if (localVideo.srcObject) {
+        const videoTrack = localVideo.srcObject.getVideoTracks()[0];
+        videoTrack.enabled = !videoTrack.enabled;
+      }
+    };
+
+    const toggleAudio = () => {
+      if (localVideo.srcObject) {
+        const audioTrack = localVideo.srcObject.getAudioTracks()[0];
+        isAudioMuted = !isAudioMuted;
+        audioTrack.enabled = !isAudioMuted;
+      }
+    };
+
+    // ローカル音声の録音を開始
+    const startLocalRecording = (stream) => {
+      localAudioChunks = [];
+      localRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      localRecorder.ondataavailable = (event) => {
+        localAudioChunks.push(event.data);
+      };
+      localRecorder.start();
+    };
+
+    // リモート音声の録音を開始
+    const startRemoteRecording = (stream) => {
+      remoteAudioChunks = [];
+      remoteRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      remoteRecorder.ondataavailable = (event) => {
+        remoteAudioChunks.push(event.data);
+      };
+      remoteRecorder.start();
+    };
+
+    // 録音停止とダウンロード
+    const stopRecordingAndDownload = () => {
+      if (localRecorder && localRecorder.state === "recording") {
+        localRecorder.stop();
+        localRecorder.onstop = () => {
+          const localAudioBlob = new Blob(localAudioChunks, { type: 'audio/webm' });
+          const localAudioUrl = URL.createObjectURL(localAudioBlob);
+          const aLocal = document.createElement('a');
+          aLocal.href = localAudioUrl;
+          aLocal.download = 'local_recording_' + new Date().toISOString() + '.webm';
+          document.body.appendChild(aLocal);
+          aLocal.click();
+          document.body.removeChild(aLocal);
+          localAudioChunks = [];
+        };
+      }
+      if (remoteRecorder && remoteRecorder.state === "recording") {
+        remoteRecorder.stop();
+        remoteRecorder.onstop = () => {
+          const remoteAudioBlob = new Blob(remoteAudioChunks, { type: 'audio/webm' });
+          const remoteAudioUrl = URL.createObjectURL(remoteAudioBlob);
+          const aRemote = document.createElement('a');
+          aRemote.href = remoteAudioUrl;
+          aRemote.download = 'remote_recording_' + new Date().toISOString() + '.webm';
+          document.body.appendChild(aRemote);
+          aRemote.click();
+          document.body.removeChild(aRemote);
+          remoteAudioChunks = [];
+        };
+      }
+    };
+
     document.querySelector("#roomIdInput").value = roomId;
     document.querySelector("#clientIdInput").value = options.clientId;
   </script>
 </body>
 
 </html>
+

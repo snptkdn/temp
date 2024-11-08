@@ -1,5 +1,5 @@
 const signalingUrl = "wss://ayame-labo.shiguredo.app/signaling";
-let roomId = "ayame-web-sdk-sample";
+let roomId = "snptkdn";
 let clientId = null;
 let videoCodec = null;
 let audioCodec = null;
